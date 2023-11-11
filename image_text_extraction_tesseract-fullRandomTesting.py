@@ -1,13 +1,38 @@
 import cv2 as cv
 import os
 import pytesseract
-from PIL import Image
+from PIL import Image as im
 import numpy as np
 import pandas as pd
 import random as rand 
+from scipy.ndimage import rotate 
 
 def coinFlip(x):
     return False if rand.random() < x else True
+
+def find_score(arr, angle):
+    data = rotate(arr, angle, reshape=False, order=0) 
+    hist = np.sum(data, axis=1)
+    score = np.sum((hist[1:] - hist[:-1]) ** 2)
+    return hist, score
+
+def deSkew(file):
+    img = im.open(file)
+    wd, ht = img.size
+    pix = np.array(img.convert('1').getdata(), np.uint8)
+    bin_img = 1 - (pix.reshape((ht, wd)) / 255.0)
+    delta = 1
+    limit = 5
+    angles = np.arange(-limit, limit+delta, delta)
+    scores = []
+    for angle in angles:
+        hist, score = find_score(bin_img, angle)
+        scores.append(score)
+    best_score = max(scores)
+    best_angle = angles[scores.index(best_score)]
+    data = rotate(bin_img, best_angle, reshape=False, order=0)
+    img = im.fromarray((255 * data).astype("uint8")).convert("RGB")
+    return img, best_angle  
 
 #tesseract file pointer
 pytesseract.pytesseract.tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
@@ -15,9 +40,8 @@ pytesseract.pytesseract.tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesse
 #set up
 current_path = os.listdir(os.getcwd())
 border = "********************"
-csv_cols = ['line', 'Case Number', 'Case Name', 'Image', 'Thresholding Used', 'Blur1', 'Blur2', 'Canny', 'deNoise', 'CannyMin', 'CannyMax', 'binaryThreshold','BlockSize', 'C', 'Blur1Median', 'Blur2Median', 'deNoiseH', 'deNoiseTemplate', 'deNoiseSearch', 'errorScore']
+csv_cols = ['Line', 'Case Number', 'Case Name', 'Image', 'Thresholding Used', 'Blur1', 'Blur2', 'Canny', 'DeNoise', 'CannyMin', 'CannyMax', 'binaryThreshold','BlockSize', 'C', 'Blur1Median', 'Blur2Median', 'DeNoiseH', 'DeNoiseTemplate', 'DeNoiseSearch', 'Skew', 'ErrorScore']
 tests_summary_df = pd.DataFrame(columns=csv_cols)
-
 """
 **************************************************************************
 Get word counts from "ref" files (from wordCountTest_testingRandom_1.py)
@@ -50,7 +74,7 @@ for refFile in refTranscriptionFiles:
 
 for file in list(transcriptionsDict_word.keys()):
     running_sum = 0
-    for word in list(transcriptionsDict_word[file].keys()):
+    for word in list(transcriptionsDict_word[file].keys()): #make one line?
         running_sum += transcriptionsDict_word[file][word]
     transcriptionsDict_word[file]["$$WORD_TOTAL$$"] = running_sum
 """
@@ -58,21 +82,20 @@ for file in list(transcriptionsDict_word.keys()):
 /END Get word counts from "ref" files (from wordCountTest_testingRandom_1.py)
 **************************************************************************
 """
-
 test_no=1
 line_no=1
-while test_no < 9:
+while test_no < 5:
     thresh_case = rand.randint(0,4)
     if thresh_case == 0:
         canny_case = coinFlip(0.4)
         blur1_case = coinFlip(0.4)
         blur2_case = coinFlip(0.4)
     else:
-        canny_case = coinFlip(0.8)
-        blur1_case = coinFlip(0.8)
-        blur2_case = coinFlip(0.8)        
+        canny_case = coinFlip(0.7)
+        blur1_case = coinFlip(0.7)
+        blur2_case = coinFlip(0.7)        
     thresh_case_name = ["simpleGray", "binary", "adaptiveMean", "adaptiveGauss", "otsu"]
-    dnoise_case = rand.randint(1,3)# coinFlip(0.2)
+    dnoise_case = rand.randint(0,3)
     dnoise_case_name = ["noDenoise", "color", "grayBefore", "grayAfter"]
 
     canny_max=rand.randint(10,900)
@@ -85,10 +108,8 @@ while test_no < 9:
     dnoise_h=rand.randrange(3,11,2)
     dnoise_search=rand.randrange(3,51,2)
     dnoise_template=max( int(dnoise_search*rand.randint(0,5)/10),1)
-    
 
     case_description="case"+str(test_no)
-
     if canny_case:
         case_description=case_description+"_canny="+str(canny_max)+"-"+str(canny_min)
     if blur1_case:
@@ -110,11 +131,8 @@ while test_no < 9:
         img = cv.imread(image)
         if img is None: continue
         if image[-7:-4] != "val": continue  ##only for evaluations where testing files end in "val"
-
         if dnoise_case==1:
             img=cv.fastNlMeansDenoisingColored(img, None, dnoise_h, dnoise_h, dnoise_template, dnoise_search )
-
-
         gray=cv.cvtColor(img, cv.COLOR_BGR2GRAY)
         if dnoise_case==2:
             gray=cv.fastNlMeansDenoising(gray, None, dnoise_h, dnoise_template, dnoise_search )        
@@ -138,15 +156,12 @@ while test_no < 9:
     
         filename = "{}".format(str(case_description)+"_"+str(image))
         cv.imwrite(filename, gray)
-        text = pytesseract.image_to_string(Image.open(filename))
-        os.remove(filename)
-
+        text = pytesseract.image_to_string(im.open(filename))
         with open(str(filename)[:-4]+"_"+str(image)[-3:]+"_result.txt", "a+") as file:
             file.write(text)
-
         file.close()
-        readFile = open(str(filename)[:-4]+"_"+str(image)[-3:]+"_result.txt", "r")        
 
+        readFile = open(str(filename)[:-4]+"_"+str(image)[-3:]+"_result.txt", "r")        
         d1 = dict()
         lineList1 = []
         lineList1 = [line.strip() for line in readFile]
@@ -159,11 +174,9 @@ while test_no < 9:
                     d1[word] += 1
                 else: 
                     d1[word] = 1
-        
         readFile.close()
 
         refWordList = list( transcriptionsDict_word[image[:len(str(image))-7]+"ref"].keys() )
-
         absolute_error = 0
         for word in refWordList:
             if word == "$$WORD_TOTAL$$": continue
@@ -172,7 +185,51 @@ while test_no < 9:
             else:
                 absolute_error += transcriptionsDict_word[image[:len(str(image))-7]+"ref"][word]
 
-        new_row = [line_no, test_no, filename, image, thresh_case_name[thresh_case], blur1_case, blur2_case, canny_case, dnoise_case_name[dnoise_case], canny_max, canny_min, binary_thresh, adaptive_blockSize, adaptive_c, blur1_median, blur2_median, dnoise_h, dnoise_template, dnoise_search, round( absolute_error/transcriptionsDict_word[image[:len(str(image))-7]+"ref"]["$$WORD_TOTAL$$"], 5) ]
+        new_row = [line_no, test_no, filename, image, thresh_case_name[thresh_case], blur1_case, blur2_case, canny_case, dnoise_case_name[dnoise_case], canny_max, canny_min, binary_thresh, adaptive_blockSize, adaptive_c, blur1_median, blur2_median, dnoise_h, dnoise_template, dnoise_search, 0, round( absolute_error/transcriptionsDict_word[image[:len(str(image))-7]+"ref"]["$$WORD_TOTAL$$"], 5) ]
+        tests_summary_df=tests_summary_df._append(pd.Series(new_row, index=tests_summary_df.columns, name=str(line_no)), ignore_index=True)
+
+        #repeat test with the same parameters, adding skew
+        graySkew, best_angle = deSkew(filename)
+        os.remove(filename)
+        if best_angle == 0: 
+            line_no+=1
+            continue
+
+        filename = "{}".format(str(case_description)+"_skew="+str(best_angle)+"_"+str(image))
+        graySkew.save(filename)
+        graySkew = cv.imread(filename)
+
+        text = pytesseract.image_to_string(im.open(filename))
+        os.remove(filename)
+        with open(str(filename)[:-4]+"_"+str(image)[-3:]+"_result.txt", "a+") as file:
+            file.write(text)
+        file.close()
+
+        readFile = open(str(filename)[:-4]+"_"+str(image)[-3:]+"_result.txt", "r")        
+        d1 = dict()
+        lineList1 = []
+        lineList1 = [line.strip() for line in readFile]
+        for line in lineList1: 
+            words = line.split(" ")
+            for word in words: 
+                if word == '':
+                    continue
+                if word in d1: 
+                    d1[word] += 1
+                else: 
+                    d1[word] = 1
+        readFile.close()
+
+        refWordList = list( transcriptionsDict_word[image[:len(str(image))-7]+"ref"].keys() )
+        absolute_error = 0
+        for word in refWordList:
+            if word == "$$WORD_TOTAL$$": continue
+            if word in list(d1.keys()):
+                absolute_error += abs( transcriptionsDict_word[image[:len(str(image))-7]+"ref"][word] - d1[word] )
+            else:
+                absolute_error += transcriptionsDict_word[image[:len(str(image))-7]+"ref"][word]        
+
+        new_row = [line_no, test_no, filename, image, thresh_case_name[thresh_case], blur1_case, blur2_case, canny_case, dnoise_case_name[dnoise_case], canny_max, canny_min, binary_thresh, adaptive_blockSize, adaptive_c, blur1_median, blur2_median, dnoise_h, dnoise_template, dnoise_search, best_angle, round( absolute_error/transcriptionsDict_word[image[:len(str(image))-7]+"ref"]["$$WORD_TOTAL$$"], 5) ]
         tests_summary_df=tests_summary_df._append(pd.Series(new_row, index=tests_summary_df.columns, name=str(line_no)), ignore_index=True)
 
         line_no+=1
