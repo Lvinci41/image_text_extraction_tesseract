@@ -40,7 +40,7 @@ pytesseract.pytesseract.tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesse
 #set up
 current_path = os.listdir(os.getcwd())
 border = "********************"
-csv_cols = ['Line', 'Case Number', 'Case Name', 'Image', 'Thresholding Used', 'Blur1', 'Blur2', 'Canny', 'DeNoise', 'CannyMin', 'CannyMax', 'binaryThreshold','BlockSize', 'C', 'Blur1Median', 'Blur2Median', 'DeNoiseH', 'DeNoiseTemplate', 'DeNoiseSearch', 'Skew', 'ErrorScore']
+csv_cols = ['line', 'Case Number', 'Case Name', 'Image', 'Thresholding Used', 'Blur1', 'Blur2', 'Canny', 'deNoise', 'CannyMin', 'CannyMax', 'binaryThreshold','BlockSize', 'C', 'Blur1Median', 'Blur2Median', 'deNoiseH', 'deNoiseTemplate', 'deNoiseSearch', 'skew', 'errorScore']
 tests_summary_df = pd.DataFrame(columns=csv_cols)
 """
 **************************************************************************
@@ -95,7 +95,7 @@ while test_no < 5:
         blur1_case = coinFlip(0.7)
         blur2_case = coinFlip(0.7)        
     thresh_case_name = ["simpleGray", "binary", "adaptiveMean", "adaptiveGauss", "otsu"]
-    dnoise_case = rand.randint(0,3)
+    dnoise_case = rand.randint(0,3)# coinFlip(0.2)
     dnoise_case_name = ["noDenoise", "color", "grayBefore", "grayAfter"]
 
     canny_max=rand.randint(10,900)
@@ -187,14 +187,15 @@ while test_no < 5:
 
         new_row = [line_no, test_no, filename, image, thresh_case_name[thresh_case], blur1_case, blur2_case, canny_case, dnoise_case_name[dnoise_case], canny_max, canny_min, binary_thresh, adaptive_blockSize, adaptive_c, blur1_median, blur2_median, dnoise_h, dnoise_template, dnoise_search, 0, round( absolute_error/transcriptionsDict_word[image[:len(str(image))-7]+"ref"]["$$WORD_TOTAL$$"], 5) ]
         tests_summary_df=tests_summary_df._append(pd.Series(new_row, index=tests_summary_df.columns, name=str(line_no)), ignore_index=True)
+        line_no+=1
 
         #repeat test with the same parameters, adding skew
         graySkew, best_angle = deSkew(filename)
+        #img = cv.imread(image)
         os.remove(filename)
         if best_angle == 0: 
-            line_no+=1
             continue
-
+        
         filename = "{}".format(str(case_description)+"_skew="+str(best_angle)+"_"+str(image))
         graySkew.save(filename)
         graySkew = cv.imread(filename)
