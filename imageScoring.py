@@ -2,31 +2,36 @@ import cv2 as cv
 import numpy as np
 from PIL import Image
 import tensorflow as tf 
-from libsvm import svmutil
+#from libsvm import svmutil
 import math
 from scipy.stats import beta
+from numpy.linalg import norm
 
-img = cv.imread('dave.jpg',0)
+import os
+import sys 
+from libsvm import svmutil
+import svmutil
+import matplotlib.pyplot as plt
+from numpy.linalg import norm
+
+#DECLARATIONS
+filename = 'IMG_4303 - Copy_val.png'
+img = cv.imread(filename)
+img1 = cv.imread(filename, 0)
 im = Image.open(filename).convert('L') # to grayscale
+im1 = Image.open(filename)
 gray=cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
-#BRIGHTNESS
-#https://towardsdatascience.com/measuring-enhancing-image-quality-attributes-234b0f250e10
-def pixel_brightness(pixel):
-    assert 3 == len(pixel)
-    r, g, b = pixel
-    return math.sqrt(0.299 * r ** 2 + 0.587 * g ** 2 + 0.114 * b ** 2)
-    
-def image_brightness(img):
-    nr_of_pixels = len(img) * len(img[0])
-    return sum(pixel_brightness(pixel) for pixel in row for row in img) / nr_of_pixels
+d = dict()
 
-
-#TONE MAPPING
-#https://towardsdatascience.com/measuring-enhancing-image-quality-attributes-234b0f250e10
 RED_SENSITIVITY = 0.299
 GREEN_SENSITIVITY = 0.587
 BLUE_SENSITIVITY = 0.114
+#/END DECLARATIONS
+
+"""
+TONE MAPPING
+"""
 
 def convert_to_brightness_image(image: np.ndarray) -> np.ndarray:
     if image.dtype == np.uint8:
@@ -37,6 +42,7 @@ def convert_to_brightness_image(image: np.ndarray) -> np.ndarray:
         + image[..., 1] ** 2 * GREEN_SENSITIVITY
         + image[..., 2] ** 2 * BLUE_SENSITIVITY
     )
+
 def get_resolution(image: np.ndarray):
     height, width = image.shape[:2]
     return height * width
@@ -47,7 +53,7 @@ def brightness_histogram(image: np.ndarray) -> np.ndarray:
     hist, _ = np.histogram(brightness_image, bins=256, range=(0, 255))
     return hist / nr_of_pixels
 
-def distribution_pmf(dist: Any, start: float, stop: float, nr_of_steps: int):
+def distribution_pmf(dist: any, start: float, stop: float, nr_of_steps: int):
     xs = np.linspace(start, stop, nr_of_steps)
     ys = dist.pdf(xs)
     return ys / np.sum(ys)
@@ -63,7 +69,13 @@ def compute_hdr(cv_image: np.ndarray):
     ref_pmf = distribution_pmf(beta(2, 2), 0, 1, 256)
     return correlation_distance(ref_pmf, img_brightness_pmf)
 
-#FFT
+d['toneMapping'] = round( compute_hdr(img), 4)
+
+"""
+/END TONE MAPPING
+FFT
+"""
+
 def detect_blur_fft(image, size=60, thresh=10, vis=True):
     (h,w) = image.shape
     (cX, cY) = (int(w/2.0), int(h/2.0))
@@ -89,42 +101,168 @@ def detect_blur_fft(image, size=60, thresh=10, vis=True):
     mean = np.mean(magnitude)
     return (mean, mean <= thresh)
 
-fft_score, fft_thresh = detect_blur_fft(img)
+fft_score, fft_thresh = detect_blur_fft(gray)
+d['FFT'] = round( fft_score, 4 ) #these two can be one line
 
-#LAPLACIAN SHARPNESS
+"""
+/END FFT
+SHARPNESS-LAPLACIAN
+"""
+
 laplacian = cv.Laplacian(img,cv.CV_64F)
-gnorm = np.sqrt(laplacian**2)
-sharpness = np.average(gnorm)
+gnorm_lp = np.sqrt(laplacian**2)
+d['sharpness_lp'] = round( np.average(gnorm_lp), 4 )
 
-#AVERAGE GRADIENT MAGNITUDE
+
+"""
+/END SHARPNESS-LAPLACIAN
+SHARPNESS-AVGGRADIENTMAGNITUDE
+"""
+
 array = np.asarray(im, dtype=np.int32)
 gy, gx = np.gradient(array)
-gnorm = np.sqrt(gx**2 + gy**2)
-sharpness = np.average(gnorm)
+gnorm_agm = np.sqrt(gx**2 + gy**2)
+d['sharpness_agm'] = round( np.average(gnorm_agm), 4 )
 
-#AVERAGE GRADIENT MAGNITUDE DERIVATIVE
-dx = np.diff(array)[1:,:] # remove the first row
-dy = np.diff(array, axis=0)[:,1:] # remove the first column
+"""
+/END SHARPNESS-AVGGRADIENTMAGNITUDE
+SHARPNESS-AVGGRADIENTMAGNITUDEDX
+"""
+dx = np.diff(im)[1:,:] # remove the first row
+dy = np.diff(im, axis=0)[:,1:] # remove the first column
 dnorm = np.sqrt(dx**2 + dy**2)
-sharpness = np.average(dnorm)
+d['sharpness_dx'] = np.average(dnorm)
 
-#TOTAL VARIATION
-tf.image.total_variation(img, name=None) 
+"""
+/END SHARPNESS-AVGGRADIENTMAGNITUDEDX
+BRISQUE
+"""
 
-#BRISQUE 
-blurred = cv.GaussianBlur(img, (7, 7), 1.166) 
-blurred_sq = blurred * blurred
-sigma = cv.GaussianBlur(img * img, (7, 7), 1.166)
-sigma = (sigma - blurred_sq) ** 0.5
-sigma = sigma + 1.0/255 
-structdis = (img - blurred)/sigma
+d['brisque'] = int( cv.quality.QualityBRISQUE_compute( img, "brisque_model_live.yml", "brisque_range_live.yml")[0])
 
-M = np.float32([[1, 0, reqshift[1]], [0, 1, reqshift[0]]])
-ShiftArr = cv.warpAffine(OrigArr, M, (structdis.shape[1], structdis.shape[0]))
+"""
+/END BRISQUE
+BRIGHTNESS1
+"""
 
-model = svmutil.svm_load_model("allmodel")
-x, idx = gen_svm_nodearray(x[1:], isKernel=(model.param.kernel_type == PRECOMPUTED))
-nr_classifier = 1 # fixed for svm type as EPSILON_SVR (regression)
-prob_estimates = (c_double * nr_classifier)()
-qualityscore = svmutil.libsvm.svm_predict_probability(model, x, dec_values)
+def brightness(img):
+    if len(img.shape) == 3:
+        # Colored RGB or BGR (*Do Not* use HSV images with this function)
+        # create brightness with euclidean norm
+        return np.average(norm(img, axis=2)) / np.sqrt(3)
+    else:
+        # Grayscale
+        return np.average(img)
+    
+d['brightness1'] = int( brightness(img) )
 
+"""
+/END BRIGHTNESS1
+BRIGHTNESS2
+"""
+
+def isbright(image, dim=10, thresh=0.5):
+    # Resize image to 10x10
+    image = cv.resize(image, (dim, dim))
+    # Convert color space to LAB format and extract L channel
+    L, A, B = cv.split(cv.cvtColor(image, cv.COLOR_BGR2LAB))
+    # Normalize L channel by dividing all pixel values with maximum pixel value
+    L = L/np.max(L)
+    # Return True if mean is greater than thresh else False
+    return np.mean(L)
+
+d['brightness2'] = round(isbright(img), 4)
+
+"""
+/END BRIGHTNESS3
+VARIANCE
+"""
+
+d['variance'] = round(np.var(img) , 2)
+
+"""
+/END VARIANCE
+LAPLACIAN VARIANCE
+"""
+
+d['lp_variance'] = round(cv.Laplacian(img, cv.CV_64F).var(), 4)
+
+"""
+/END LAPLACIAN VARIANCE
+GRAY VARIANCE
+"""
+
+d['variance_gray'] = round(np.var(gray), 2)
+
+"""
+/END GRAY VARIANCE
+GRAY LAPLACIAN VARIANCE
+"""
+
+d['lp_variance_gray'] = round(cv.Laplacian(gray, cv.CV_64F).var(), 2)
+
+"""
+/END GRAY LAPLACIAN VARIANCE
+BACKGROUND/MODE COLOR (only works for JPG)
+"""
+im_size = im1.size[0]*im1.size[1]
+
+#DOWNSAMPLE
+allColors = im1.getcolors(im_size)
+downsampleColors = []
+dsColorsWithCount = []
+colorCounts = [i[0] for i in allColors]
+for color in allColors:
+    colorVec = color[1]
+    newVec = []
+    for coordinate in colorVec:
+        newVec.append( int(coordinate/17) )
+        newEntry = [color[0], tuple(newVec) ]
+    downsampleColors.append( tuple(newVec) )
+    dsColorsWithCount.append( tuple( newEntry ) )
+
+dsColorsAndCounts = []
+dsColors_arr = set( downsampleColors )
+for color in dsColors_arr:
+    count = 0
+    for entry in dsColorsWithCount:
+        if entry[1] == color:
+            count += entry[0]
+    newEntry = [count, color ] 
+    dsColorsAndCounts.append( tuple( newEntry ) )
+#/END DOWNSAMPLE
+
+
+all_colors = sorted(dsColorsAndCounts, reverse=True, key=lambda tup: tup[0])
+color1 = all_colors[0]
+color2 = all_colors[1]
+color3 = all_colors[2]
+
+d['color1_vector'] = color1[1]
+d['color2_vector'] = color2[1]
+d['color3_vector'] = color3[1]
+
+d['color1_maxCoordinate'] = color1[1].index(max( color1[1] ))
+d['color2_maxCoordinate'] = color2[1].index(max( color2[1] ))
+d['color3_maxCoordinate'] = color3[1].index(max( color3[1] ))
+
+d['color1_strength'] = max( color1[1] )
+d['color2_strength'] = max( color2[1] )
+d['color3_strength'] = max( color3[1] )
+
+d['color1_dominance'] = round( color1[0]/im_size , 4)
+d['color2_dominance'] = round( color2[0]/im_size , 4)
+d['color3_dominance'] = round( color3[0]/im_size , 4)
+
+d['color1_dupCoordinate'] = color1[1].count( max( color1[1]))
+d['color2_dupCoordinate'] = color2[1].count( max( color2[1]))
+d['color3_dupCoordinate'] = color3[1].count( max( color2[1]))
+
+d['color1_isGray'] = color1[1][0]==color1[1][1]==color1[1][2]
+d['color2_isGray'] = color2[1][0]==color2[1][1]==color2[1][2]
+d['color3_isGray'] = color3[1][0]==color3[1][1]==color3[1][2]
+
+"""
+/END BACKGROUND/MODE COLOR
+
+"""
