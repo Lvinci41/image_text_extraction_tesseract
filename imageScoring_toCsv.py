@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from numpy.linalg import norm
 
 current_path = os.listdir(os.getcwd())
-csv_cols = ['IMG','toneMapping','FFT','sharpness_lp','sharpness_agm','sharpness_dx','brisque','brightness1','brightness2','variance','lp_variance','variance_gray','lp_variance_gray','color1_vector','color2_vector','color3_vector','color1_maxCoordinate','color2_maxCoordinate','color3_maxCoordinate','color1_strength','color2_strength','color3_strength','color1_dominance','color2_dominance','color3_dominance','color1_dupCoordinate','color2_dupCoordinate','color3_dupCoordinate','color1_isGray','color2_isGray','color3_isGray']
+csv_cols = ['IMG','toneMapping','FFT','FFT_b', 'FFT_g', 'FFT_r','sharpness_lp','sharpness_agm','sharpness_dx','brisque','brightness1','brightness1_b', 'brightness1_g', 'brightness1_r', 'brightness2', 'variance','variance_b', 'variance_g', 'variance_r', 'lp_variance','lp_variance_b', 'lp_variance_g', 'lp_variance_r', 'variance_gray','lp_variance_gray','color1_vector','color2_vector','color3_vector','color1_maxCoordinate','color2_maxCoordinate','color3_maxCoordinate','color1_strength','color2_strength','color3_strength','color1_dominance','color2_dominance','color3_dominance','color1_dupCoordinate','color2_dupCoordinate','color3_dupCoordinate','color1_isGray','color2_isGray','color3_isGray']
 df = pd.DataFrame(columns=csv_cols)
 RED_SENSITIVITY = 0.299
 GREEN_SENSITIVITY = 0.587
@@ -111,8 +111,7 @@ for filename in current_path:
     im = Image.open(filename).convert('L') # to grayscale
     im1 = Image.open(filename)
     gray=cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-
-
+    b,g,r=cv.split(img)
             
     d = dict()
     d['IMG'] = filename
@@ -126,8 +125,12 @@ for filename in current_path:
     /END TONE MAPPING
     FFT
     """
-    fft_score, fft_thresh = detect_blur_fft(gray)
-    d['FFT'] = round( fft_score, 4 ) #these two can be one line
+    #fft_score, fft_thresh = detect_blur_fft(gray)
+    #d['FFT'] = round( fft_score, 4 )
+    d['FFT'] = round( detect_blur_fft(gray)[0], 4 )
+    d['FFT_b'] = round( detect_blur_fft(b)[0], 4)
+    d['FFT_g'] = round( detect_blur_fft(g)[0], 4)
+    d['FFT_r'] = round( detect_blur_fft(r)[0], 4)
     """
     /END FFT
     SHARPNESS-LAPLACIAN
@@ -135,6 +138,18 @@ for filename in current_path:
     laplacian = cv.Laplacian(img,cv.CV_64F)
     gnorm_lp = np.sqrt(laplacian**2)
     d['sharpness_lp'] = round( np.average(gnorm_lp), 4 )
+
+    laplacianb = cv.Laplacian(b,cv.CV_64F)
+    gnorm_lp = np.sqrt(laplacian**2)
+    d['sharpness_lp'] = round( np.average(gnorm_lp), 4 )
+
+    laplaciang = cv.Laplacian(g,cv.CV_64F)
+    gnorm_lp = np.sqrt(laplacian**2)
+    d['sharpness_lp'] = round( np.average(gnorm_lp), 4 )
+
+    laplacianr = cv.Laplacian(r,cv.CV_64F)
+    gnorm_lp = np.sqrt(laplacian**2)
+    d['sharpness_lp'] = round( np.average(gnorm_lp), 4 )            
     """
     /END SHARPNESS-LAPLACIAN
     SHARPNESS-AVGGRADIENTMAGNITUDE
@@ -161,21 +176,32 @@ for filename in current_path:
     BRIGHTNESS1
     """
     d['brightness1'] = int( brightness(img) )
+    d['brightness1_b'] = int( brightness(b) )
+    d['brightness1_g'] = int( brightness(g) )
+    d['brightness1_r'] = int( brightness(r) )
     """
     /END BRIGHTNESS1
     BRIGHTNESS2
     """
     d['brightness2'] = round(isbright(img), 4)
+
     """
     /END BRIGHTNESS3
     VARIANCE
     """
     d['variance'] = round(np.var(img) , 2)
+    d['variance_b'] = round(np.var(b) , 2)
+    d['variance_g'] = round(np.var(g) , 2)
+    d['variance_r'] = round(np.var(r) , 2)
     """
     /END VARIANCE
     LAPLACIAN VARIANCE
     """
     d['lp_variance'] = round(cv.Laplacian(img, cv.CV_64F).var(), 4)
+    d['lp_variance_b'] = round(cv.Laplacian(b, cv.CV_64F).var(), 4)
+    d['lp_variance_g'] = round(cv.Laplacian(g, cv.CV_64F).var(), 4)
+    d['lp_variance_r'] = round(cv.Laplacian(r, cv.CV_64F).var(), 4)
+
     """
     /END LAPLACIAN VARIANCE
     GRAY VARIANCE
@@ -185,7 +211,7 @@ for filename in current_path:
     /END GRAY VARIANCE
     GRAY LAPLACIAN VARIANCE
     """
-    d['lp_variance_gray'] = round(cv.Laplacian(gray, cv.CV_64F).var(), 2)
+    d['lp_variance_gray'] = round(cv.Laplacian(gray, cv.CV_64F).var(), 4)
     """
     /END GRAY LAPLACIAN VARIANCE
     BACKGROUND/MODE COLOR (only works for JPG)
