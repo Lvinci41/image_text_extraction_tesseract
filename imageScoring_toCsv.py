@@ -1,8 +1,6 @@
 import cv2 as cv
 import numpy as np
 from PIL import Image
-import tensorflow as tf 
-#from libsvm import svmutil
 import math
 from scipy.stats import beta
 from numpy.linalg import norm
@@ -63,24 +61,13 @@ def detect_blur_fft(image, size=60, thresh=10, vis=True):
     (cX, cY) = (int(w/2.0), int(h/2.0))
     fft = np.fft.fft2(image)
     fftShift = np.fft.fftshift(fft)
-    if vis:
-        magnitude = 20 * np.log(np.abs(fftShift))
-        (fig, ax) = plt.subplots(1, 2, )
-        ax[0].imshow(image, cmap="gray")
-        ax[0].set_title("Input")
-        ax[0].set_xticks([])
-        ax[0].set_yticks([])
-        ax[1].imshow(magnitude, cmap="gray")
-        ax[1].set_title("Magnitude Spectrum")
-        ax[1].set_xticks([])
-        ax[1].set_yticks([])
-
     fftShift[cY - size:cY + size, cX - size:cX + size] = 0
     fftShift = np.fft.ifftshift(fftShift)
-    recon = np.fft.ifft2(fftShift)
+    recon = np.fft.ifft2(fftShift)    
 
     magnitude = 20 * np.log(np.abs(recon))
     mean = np.mean(magnitude)
+
     return (mean, mean <= thresh)
 
 def brightness(img):
@@ -117,24 +104,22 @@ for filename in current_path:
     d['IMG'] = filename
 
     #/END DECLARATIONS
-    """
-    TONE MAPPING
-    """
+
+#    TONE MAPPING
+
     d['toneMapping'] = round( compute_hdr(img), 4)
-    """
-    /END TONE MAPPING
-    FFT
-    """
-    #fft_score, fft_thresh = detect_blur_fft(gray)
-    #d['FFT'] = round( fft_score, 4 )
+    
+#    /END TONE MAPPING
+#    FFT
+
     d['FFT'] = round( detect_blur_fft(gray)[0], 4 )
     d['FFT_b'] = round( detect_blur_fft(b)[0], 4)
     d['FFT_g'] = round( detect_blur_fft(g)[0], 4)
     d['FFT_r'] = round( detect_blur_fft(r)[0], 4)
-    """
-    /END FFT
-    SHARPNESS-LAPLACIAN
-    """
+    
+#    /END FFT
+#    SHARPNESS-LAPLACIAN
+    
     laplacian = cv.Laplacian(img,cv.CV_64F)
     gnorm_lp = np.sqrt(laplacian**2)
     d['sharpness_lp'] = round( np.average(gnorm_lp), 4 )
@@ -150,72 +135,64 @@ for filename in current_path:
     laplacianr = cv.Laplacian(r,cv.CV_64F)
     gnorm_lp = np.sqrt(laplacian**2)
     d['sharpness_lp'] = round( np.average(gnorm_lp), 4 )            
-    """
-    /END SHARPNESS-LAPLACIAN
-    SHARPNESS-AVGGRADIENTMAGNITUDE
-    """
+    
+#    /END SHARPNESS-LAPLACIAN
+#    SHARPNESS-AVGGRADIENTMAGNITUDE
+    
     array = np.asarray(im, dtype=np.int32)
     gy, gx = np.gradient(array)
     gnorm_agm = np.sqrt(gx**2 + gy**2)
     d['sharpness_agm'] = round( np.average(gnorm_agm), 4 )
-    """
-    /END SHARPNESS-AVGGRADIENTMAGNITUDE
-    SHARPNESS-AVGGRADIENTMAGNITUDEDX
-    """
+    
+#    /END SHARPNESS-AVGGRADIENTMAGNITUDE
+#    SHARPNESS-AVGGRADIENTMAGNITUDEDX
+    
     dx = np.diff(im)[1:,:] # remove the first row
     dy = np.diff(im, axis=0)[:,1:] # remove the first column
-    dnorm = np.sqrt(dx**2 + dy**2)
-    d['sharpness_dx'] = np.average(dnorm)
-    """
-    /END SHARPNESS-AVGGRADIENTMAGNITUDEDX
-    BRISQUE
-    """
+    dnorm = np.sqrt(dx**2 + dy**2, dtype=np.float64) 
+    d['sharpness_dx'] = round( np.average(dnorm), 4)
+    
+#    /END SHARPNESS-AVGGRADIENTMAGNITUDEDX
+#    BRISQUE
+    
     d['brisque'] = int( cv.quality.QualityBRISQUE_compute( img, "brisque_model_live.yml", "brisque_range_live.yml")[0])
-    """
-    /END BRISQUE
-    BRIGHTNESS1
-    """
+    
+#    /END BRISQUE
+#    BRIGHTNESS1
+    
     d['brightness1'] = int( brightness(img) )
     d['brightness1_b'] = int( brightness(b) )
     d['brightness1_g'] = int( brightness(g) )
     d['brightness1_r'] = int( brightness(r) )
-    """
-    /END BRIGHTNESS1
-    BRIGHTNESS2
-    """
+    
+#    /END BRIGHTNESS1
+#    BRIGHTNESS2
+    
     d['brightness2'] = round(isbright(img), 4)
 
-    """
-    /END BRIGHTNESS3
-    VARIANCE
-    """
+    
+#    /END BRIGHTNESS3
+#    VARIANCE
+    
     d['variance'] = round(np.var(img) , 2)
     d['variance_b'] = round(np.var(b) , 2)
     d['variance_g'] = round(np.var(g) , 2)
     d['variance_r'] = round(np.var(r) , 2)
-    """
-    /END VARIANCE
-    LAPLACIAN VARIANCE
-    """
+    d['variance_gray'] = round(np.var(gray), 2)
+
+#    /END VARIANCE
+#    LAPLACIAN VARIANCE
+    
     d['lp_variance'] = round(cv.Laplacian(img, cv.CV_64F).var(), 4)
     d['lp_variance_b'] = round(cv.Laplacian(b, cv.CV_64F).var(), 4)
     d['lp_variance_g'] = round(cv.Laplacian(g, cv.CV_64F).var(), 4)
     d['lp_variance_r'] = round(cv.Laplacian(r, cv.CV_64F).var(), 4)
-
-    """
-    /END LAPLACIAN VARIANCE
-    GRAY VARIANCE
-    """
-    d['variance_gray'] = round(np.var(gray), 2)
-    """
-    /END GRAY VARIANCE
-    GRAY LAPLACIAN VARIANCE
-    """
     d['lp_variance_gray'] = round(cv.Laplacian(gray, cv.CV_64F).var(), 4)
-    """
-    /END GRAY LAPLACIAN VARIANCE
-    BACKGROUND/MODE COLOR (only works for JPG)
-    """
+
+    
+#    /END LAPLACIAN VARIANCE
+#    BACKGROUND/MODE COLOR 
+    
     im_size = im1.size[0]*im1.size[1]
 
     #DOWNSAMPLE
@@ -271,10 +248,14 @@ for filename in current_path:
     d['color1_isGray'] = color1[1][0]==color1[1][1]==color1[1][2]
     d['color2_isGray'] = color2[1][0]==color2[1][1]==color2[1][2]
     d['color3_isGray'] = color3[1][0]==color3[1][1]==color3[1][2]
-    """
-    /END BACKGROUND/MODE COLOR
-    """
+    
+#    /END BACKGROUND/MODE COLOR
+    
+    #close PIL images
+    im.close()
+    im1.close()
 
     df = df._append(pd.DataFrame([d], index=['IMG'], columns=df.columns))
 
 df.to_csv('image_features.csv', index=False)
+
